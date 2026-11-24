@@ -6,15 +6,15 @@ import { ptBR } from "date-fns/locale";
 import { DollarSign, Calendar, User, Scissors, Check, Sparkles } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { PixPaymentModal } from "@/components/PixPaymentModal";
-import { getActiveServices, getActiveBarbers, getBarberAvailability } from "@/lib/db";
+import { getActiveServices, getActiveBarbers, getBarberAvailability, DEFAULT_SERVICES, DEFAULT_BARBERS } from "@/lib/db";
 import { createAppointmentAction, verifyPixPaymentAction } from "./actions";
 import { updateAppointmentStatus } from "@/app/admin/actions";
 import { Service, Barber, Appointment } from "@/types/database";
 
 export default function BookingPage() {
     const [step, setStep] = useState(1);
-    const [services, setServices] = useState<Service[]>([]);
-    const [barbers, setBarbers] = useState<Barber[]>([]);
+    const [services, setServices] = useState<Service[]>(DEFAULT_SERVICES);
+    const [barbers, setBarbers] = useState<Barber[]>(DEFAULT_BARBERS);
     const [availableSlots, setAvailableSlots] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isPixModalOpen, setIsPixModalOpen] = useState(false);
