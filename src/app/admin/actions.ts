@@ -47,3 +47,32 @@ export async function deleteAppointmentAdmin(id: string) {
     revalidatePath("/barbeiro/agenda");
     return { success: true };
 }
+
+/**
+ * Permite ao dono do sistema ativar seu perfil como Administrador
+ * com 1 clique caso ainda não exista outro admin ativo no banco.
+ */
+export async function claimFirstAdminAction(userId: string) {
+    const supabase = adminClient();
+
+    // Checa se já existe algum admin
+    const { data: existingAdmins } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("role", "admin")
+        .limit(1);
+
+    if (existingAdmins && existingAdmins.length > 0) {
+        return { error: "Já existe um administrador registrado no sistema." };
+    }
+
+    const { error } = await supabase
+        .from("profiles")
+        .update({ role: "admin" })
+        .eq("id", userId);
+
+    if (error) return { error: error.message };
+
+    revalidatePath("/admin");
+    return { success: true };
+}

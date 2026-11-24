@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Loader2, Shield, Lock, Mail, ArrowRight, AlertCircle, LogIn, ExternalLink } from "lucide-react";
+import { Loader2, Shield, Lock, Mail, ArrowRight, AlertCircle, LogIn, CheckCircle2 } from "lucide-react";
 import { AdminSidebar } from "@/components/admin/Sidebar";
+import { claimFirstAdminAction } from "./actions";
 import Link from "next/link";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const [user, setUser] = useState<any>(null);
     const [isAuthorized, setIsAuthorized] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
+    const [canClaimAdmin, setCanClaimAdmin] = useState(false);
+    const [isClaiming, setIsClaiming] = useState(false);
 
     // Form de login embutido
     const [email, setEmail] = useState("");
@@ -38,7 +41,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             setUser(user);
 
             // Verifica role na tabela profiles
-            const { data: profile, error } = await supabase
+            const { data: profile } = await supabase
                 .from("profiles")
                 .select("role")
                 .eq("id", user.id)
@@ -47,15 +50,36 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             if (profile?.role === 'admin') {
                 setIsAuthorized(true);
                 setAuthError(null);
+                setCanClaimAdmin(false);
             } else {
                 setIsAuthorized(false);
-                setAuthError(`O usuário logado (${user.email}) não possui o papel de Administrador. Execute o comando SQL no Supabase para colocar role = 'admin'.`);
+                setCanClaimAdmin(true);
+                setAuthError(`Usuário autenticado (${user.email}), porém o perfil está como '${profile?.role || 'customer'}'.`);
             }
         } catch (err: any) {
             console.error("Erro ao verificar autenticação de admin:", err);
             setAuthError(err.message || "Erro ao conectar com o banco de dados.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleClaimAdmin = async () => {
+        if (!user) return;
+        setIsClaiming(true);
+        try {
+            const result = await claimFirstAdminAction(user.id);
+            if (result.error) {
+                setAuthError(result.error);
+            } else {
+                setIsAuthorized(true);
+                setAuthError(null);
+                setCanClaimAdmin(false);
+            }
+        } catch (err: any) {
+            setAuthError("Erro ao ativar admin: " + err.message);
+        } finally {
+            setIsClaiming(false);
         }
     };
 
@@ -78,6 +102,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             }
 
             if (data.user) {
+                setUser(data.user);
                 // Checa se o usuário é admin
                 const { data: profile } = await supabase
                     .from("profiles")
@@ -86,11 +111,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     .single();
 
                 if (profile?.role === 'admin') {
-                    setUser(data.user);
                     setIsAuthorized(true);
                     setAuthError(null);
+                    setCanClaimAdmin(false);
                 } else {
-                    setAuthError(`Usuário autenticado (${data.user.email}), porém o perfil está como '${profile?.role || 'customer'}'. Promova para 'admin' no Supabase.`);
+                    setCanClaimAdmin(true);
+                    setAuthError(`Usuário autenticado (${data.user.email}), porém o perfil está como '${profile?.role || 'customer'}'.`);
                 }
             }
         } catch (err: any) {
@@ -130,70 +156,96 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </div>
 
                     {authError && (
-                        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs flex items-start gap-3">
-                            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-500" />
-                            <div className="leading-relaxed">
-                                {authError}
+                        <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-300 text-xs space-y-3">
+                            <div className="flex items-start gap-3">
+                                <AlertCircle className="w-5 h-5 flex-shrink-0 text-amber-500 mt-0.5" />
+                                <div className="leading-relaxed">
+                                    {authError}
+                                </div>
                             </div>
+
+                            {/* Botão de 1 clique para se tornar Admin */}
+                            {canClaimAdmin && (
+                                <button
+                                    type="button"
+                                    onClick={handleClaimAdmin}
+                                    disabled={isClaiming}
+                                    className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer disabled:opacity-50"
+                                >
+                                    {isClaiming ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Ativando Administrador...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Shield className="w-4 h-4" />
+                                            Ativar {user?.email} como Dono / Admin Agora
+                                        </>
+                                    )}
+                                </button>
+                            )}
                         </div>
                     )}
 
                     {/* Formulário de Login */}
-                    <form onSubmit={handleLogin} className="bg-neutral-900/80 border border-white/10 rounded-2xl p-6 sm:p-8 space-y-5 shadow-2xl backdrop-blur-md">
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-xs uppercase tracking-wider text-neutral-400 font-semibold mb-2">
-                                    Email do Administrador
-                                </label>
-                                <div className="relative">
-                                    <Mail className="w-4 h-4 text-neutral-500 absolute left-3.5 top-3.5" />
-                                    <input
-                                        type="email"
-                                        required
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        placeholder="admin@barbearia.com"
-                                        className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:border-amber-500 outline-none transition-colors"
-                                    />
+                    {!user && (
+                        <form onSubmit={handleLogin} className="bg-neutral-900/80 border border-white/10 rounded-2xl p-6 sm:p-8 space-y-5 shadow-2xl backdrop-blur-md">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs uppercase tracking-wider text-neutral-400 font-semibold mb-2">
+                                        Email do Administrador
+                                    </label>
+                                    <div className="relative">
+                                        <Mail className="w-4 h-4 text-neutral-500 absolute left-3.5 top-3.5" />
+                                        <input
+                                            type="email"
+                                            required
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            placeholder="admin@barbearia.com"
+                                            className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:border-amber-500 outline-none transition-colors"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs uppercase tracking-wider text-neutral-400 font-semibold mb-2">
+                                        Senha
+                                    </label>
+                                    <div className="relative">
+                                        <Lock className="w-4 h-4 text-neutral-500 absolute left-3.5 top-3.5" />
+                                        <input
+                                            type="password"
+                                            required
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            placeholder="••••••••"
+                                            className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:border-amber-500 outline-none transition-colors"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs uppercase tracking-wider text-neutral-400 font-semibold mb-2">
-                                    Senha
-                                </label>
-                                <div className="relative">
-                                    <Lock className="w-4 h-4 text-neutral-500 absolute left-3.5 top-3.5" />
-                                    <input
-                                        type="password"
-                                        required
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        placeholder="••••••••"
-                                        className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:border-amber-500 outline-none transition-colors"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <button
-                            type="submit"
-                            disabled={isSubmitting}
-                            className="w-full py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-bold text-sm transition-all shadow-[0_0_20px_rgba(245,158,11,0.25)] flex items-center justify-center gap-2 cursor-pointer"
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Autenticando...
-                                </>
-                            ) : (
-                                <>
-                                    <LogIn className="w-4 h-4" />
-                                    Entrar no Painel
-                                </>
-                            )}
-                        </button>
-                    </form>
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="w-full py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-bold text-sm transition-all shadow-[0_0_20px_rgba(245,158,11,0.25)] flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                                {isSubmitting ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Autenticando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <LogIn className="w-4 h-4" />
+                                        Entrar no Painel
+                                    </>
+                                )}
+                            </button>
+                        </form>
+                    )}
 
                     <div className="text-center pt-2">
                         <Link
