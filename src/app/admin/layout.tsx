@@ -75,6 +75,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 setIsAuthorized(true);
                 setAuthError(null);
                 setCanClaimAdmin(false);
+                window.location.href = '/admin';
             }
         } catch (err: any) {
             setAuthError("Erro ao ativar admin: " + err.message);
